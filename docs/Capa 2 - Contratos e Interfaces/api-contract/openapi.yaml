@@ -396,7 +396,7 @@ components:
         botToken:
           type: string
           description: Token del bot de Telegram. Se almacena cifrado.
-          example: "7123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw"
+          example: "99999999:mi_token_super_secreto"
         botUsername:
           type: string
           example: "ClinicaPerezBot"
