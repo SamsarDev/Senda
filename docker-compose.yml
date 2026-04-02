@@ -1,0 +1,72 @@
+services:
+  # Base de Datos con soporte para Vectores (RAG)
+  senda-db:
+    image: ankane/pgvector:latest
+    container_name: senda-db
+    restart: always
+    environment:
+      POSTGRES_DB: senda_db
+      POSTGRES_USER: ${DB_USER:-admin}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-senda_secure_pass}
+    ports:
+      - "5432:5432"
+    volumes:
+      - senda_db_data:/var/lib/postgresql/data
+    networks:
+      - senda-network
+
+  # Backend API (.NET 8/9)
+  senda-api:
+    build:
+      context: .
+      dockerfile: src/Senda.Api/Dockerfile
+    container_name: senda-api
+    restart: always
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__DefaultConnection=Host=senda-db;Database=senda_db;Username=${DB_USER:-admin};Password=${DB_PASSWORD:-senda_secure_pass}
+      - AI__Provider=${AI_PROVIDER:-OpenAI} # OpenAI o Ollama
+      - AI__ApiKey=${AI_API_KEY}
+      - AI__Endpoint=${AI_ENDPOINT}
+    ports:
+      - "5000:8080"
+    depends_on:
+      - senda-db
+    networks:
+      - senda-network
+
+  # Frontend (Vue 3 + Vite)
+  senda-web:
+    build:
+      context: .
+      dockerfile: src/Senda.Web/Dockerfile
+    container_name: senda-web
+    restart: always
+    ports:
+      - "80:80"
+    environment:
+      - VITE_API_URL=http://localhost:5000/api
+    depends_on:
+      - senda-api
+    networks:
+      - senda-network
+
+  # Orquestador Local de IA (Opcional para desarrollo/privacidad local)
+  # Útil para probar modelos como Llama 3 o Mistral sin costo de API
+  ollama:
+    image: ollama/ollama:latest
+    container_name: senda-ollama
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"
+    networks:
+      - senda-network
+
+networks:
+  senda-network:
+    driver: bridge
+
+volumes:
+  senda_db_data:
+  ollama_data:

@@ -1,0 +1,1254 @@
+openapi: 3.1.0
+
+info:
+  title: Senda AI Concierge API
+  version: 1.0.0
+  description: |
+    API REST del módulo **Senda AI Concierge** — orquestador de IA para PyMEs.
+
+    ## Autenticación
+    La mayoría de endpoints requieren un JWT Bearer token obtenido mediante `POST /api/v1/auth/login`.
+    El endpoint de chat (`POST /api/v1/chat/message`) usa autenticación por `PublicApiKey` del canal,
+    diseñada para ser embebida en widgets públicos.
+
+    ## Multi-tenancy
+    Todos los recursos están aislados por tenant. El `TenantId` se resuelve automáticamente
+    desde el claim `tenant_id` del JWT. No es necesario (ni posible) especificarlo en las requests.
+
+    ## Formato de errores
+    Todos los errores siguen el estándar **RFC 7807 Problem Details**.
+
+    ## Versionado
+    La versión actual es `v1`. Los endpoints deprecados incluirán el header `Deprecation: true`.
+  contact:
+    name: Senda Open Source
+    url: https://github.com/senda-ai
+  license:
+    name: AGPL-3.0
+    url: https://www.gnu.org/licenses/agpl-3.0.html
+
+servers:
+  - url: http://localhost:5000
+    description: Entorno de desarrollo local
+  - url: https://api.tu-dominio.com
+    description: Producción (reemplazar con tu dominio)
+
+tags:
+  - name: Auth
+    description: Autenticación y gestión de tokens JWT
+  - name: Tenants
+    description: Registro y gestión del tenant
+  - name: Documents
+    description: Ingesta y gestión de documentos para el conocimiento RAG
+  - name: Knowledge
+    description: Configuración del comportamiento de la IA (system prompt, modelo, parámetros)
+  - name: Channels
+    description: Configuración de canales de chat (Website, WhatsApp, Telegram)
+  - name: Chat
+    description: Endpoint público del concierge — conversación con el usuario final
+
+# ─────────────────────────────────────────────
+# SECURITY SCHEMES
+# ─────────────────────────────────────────────
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT obtenido en `POST /api/v1/auth/login`. Expira en 15 minutos.
+
+    PublicApiKey:
+      type: apiKey
+      in: header
+      name: X-Api-Key
+      description: |
+        API Key pública del `ChatChannel`. De solo lectura. Diseñada para ser embebida
+        en el widget web o configurada en el webhook de WhatsApp/Telegram.
+        Se obtiene al crear o consultar un `ChatChannel`.
+
+  # ─────────────────────────────────────────────
+  # SCHEMAS
+  # ─────────────────────────────────────────────
+  schemas:
+
+    # ── Shared ──────────────────────────────────
+
+    ProblemDetails:
+      type: object
+      description: Formato estándar RFC 7807 para respuestas de error.
+      properties:
+        type:
+          type: string
+          example: "https://tools.ietf.org/html/rfc9110#section-15.5.1"
+        title:
+          type: string
+          example: "Validation Error"
+        status:
+          type: integer
+          example: 400
+        detail:
+          type: string
+          example: "El campo 'email' no tiene un formato válido."
+        errors:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+          example:
+            email: ["El campo 'email' no tiene un formato válido."]
+            password: ["La contraseña debe tener al menos 8 caracteres."]
+        traceId:
+          type: string
+          example: "00-abc123def456-00"
+
+    # ── Auth ────────────────────────────────────
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          example: "admin@clinicaperez.com"
+        password:
+          type: string
+          format: password
+          minLength: 8
+          example: "MiContraseña123!"
+
+    AuthResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+          description: JWT con expiración de 15 minutos.
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        refreshToken:
+          type: string
+          description: Token opaco para renovar el accessToken. Expira en 7 días.
+          example: "dGhpcyBpcyBhIHJlZnJlc2ggdG9rZW4..."
+        expiresAt:
+          type: string
+          format: date-time
+          example: "2025-01-15T14:30:00Z"
+        user:
+          $ref: '#/components/schemas/UserSummary'
+
+    RefreshRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+          example: "dGhpcyBpcyBhIHJlZnJlc2ggdG9rZW4..."
+
+    UserSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        firstName:
+          type: string
+        lastName:
+          type: string
+        role:
+          type: string
+          enum: [TenantAdmin, TenantViewer]
+
+    # ── Tenants ─────────────────────────────────
+
+    RegisterTenantRequest:
+      type: object
+      required: [businessName, adminEmail, adminPassword, adminFirstName, adminLastName]
+      properties:
+        businessName:
+          type: string
+          minLength: 2
+          maxLength: 100
+          example: "Clínica Dental Pérez"
+        adminEmail:
+          type: string
+          format: email
+          example: "admin@clinicaperez.com"
+        adminPassword:
+          type: string
+          format: password
+          minLength: 8
+          example: "MiContraseña123!"
+        adminFirstName:
+          type: string
+          example: "Carlos"
+        adminLastName:
+          type: string
+          example: "Pérez"
+
+    TenantResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: "Clínica Dental Pérez"
+        slug:
+          type: string
+          example: "clinica-dental-perez"
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+    # ── Documents ───────────────────────────────
+
+    DocumentResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        fileName:
+          type: string
+          example: "catalogo_servicios_2024.pdf"
+        fileType:
+          type: string
+          enum: [Pdf, Txt]
+        fileSizeBytes:
+          type: integer
+          example: 204800
+        status:
+          type: string
+          enum: [Uploaded, Pending, Processing, Indexed, Failed, Superseded]
+          example: "Indexed"
+        processingError:
+          type: string
+          nullable: true
+          description: Solo presente cuando status = Failed.
+          example: null
+        chunkCount:
+          type: integer
+          description: Total de chunks generados. 0 hasta que status = Indexed.
+          example: 47
+        createdAt:
+          type: string
+          format: date-time
+        indexedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    DocumentListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/DocumentResponse'
+        totalCount:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
+
+    # ── Knowledge Configuration ──────────────────
+
+    KnowledgeConfigurationResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        systemPrompt:
+          type: string
+          example: "Eres el asistente amable de Clínica Dental Pérez. Responde de forma concisa y profesional. Solo responde preguntas relacionadas con los servicios de la clínica."
+        llmModel:
+          type: string
+          example: "gpt-4o-mini"
+        temperature:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 1.0
+          example: 0.3
+        maxResponseTokens:
+          type: integer
+          minimum: 100
+          maximum: 2000
+          example: 500
+        maxContextChunks:
+          type: integer
+          minimum: 1
+          maximum: 10
+          example: 5
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    UpdateKnowledgeConfigurationRequest:
+      type: object
+      properties:
+        systemPrompt:
+          type: string
+          minLength: 10
+          maxLength: 2000
+          example: "Eres el asistente de Clínica Dental Pérez..."
+        llmModel:
+          type: string
+          enum: [gpt-4o-mini, gpt-4o, llama3]
+          example: "gpt-4o-mini"
+        temperature:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 1.0
+          example: 0.3
+        maxResponseTokens:
+          type: integer
+          minimum: 100
+          maximum: 2000
+          example: 500
+        maxContextChunks:
+          type: integer
+          minimum: 1
+          maximum: 10
+          example: 5
+
+    # ── Chat Channels ────────────────────────────
+
+    ChannelType:
+      type: string
+      enum: [Website, WhatsApp, Telegram]
+
+    CreateChannelRequest:
+      type: object
+      required: [type, displayName]
+      properties:
+        type:
+          $ref: '#/components/schemas/ChannelType'
+        displayName:
+          type: string
+          minLength: 2
+          maxLength: 100
+          example: "Chat del Sitio Web Principal"
+        configuration:
+          oneOf:
+            - $ref: '#/components/schemas/WebsiteChannelConfiguration'
+            - $ref: '#/components/schemas/WhatsAppChannelConfiguration'
+            - $ref: '#/components/schemas/TelegramChannelConfiguration'
+          discriminator:
+            propertyName: channelType
+
+    WebsiteChannelConfiguration:
+      type: object
+      properties:
+        channelType:
+          type: string
+          enum: [Website]
+        allowedOrigins:
+          type: string
+          description: Dominio(s) permitidos para CORS del widget.
+          example: "https://www.clinicaperez.com"
+        primaryColor:
+          type: string
+          pattern: '^#[0-9A-Fa-f]{6}$'
+          example: "#1976D2"
+        welcomeMessage:
+          type: string
+          example: "¡Hola! Soy el asistente virtual de Clínica Dental Pérez. ¿En qué puedo ayudarte?"
+
+    WhatsAppChannelConfiguration:
+      type: object
+      required: [phoneNumberId, accessToken, webhookVerifyToken]
+      properties:
+        channelType:
+          type: string
+          enum: [WhatsApp]
+        phoneNumberId:
+          type: string
+          description: ID del número de teléfono en la API de WhatsApp Business.
+          example: "123456789012345"
+        accessToken:
+          type: string
+          description: Token de acceso de la API de Meta. Se almacena cifrado.
+          example: "EAABwzLixnjYBO..."
+        webhookVerifyToken:
+          type: string
+          description: Token para verificar el webhook de Meta. Definido por el usuario.
+          example: "mi_token_secreto_webhook"
+
+    TelegramChannelConfiguration:
+      type: object
+      required: [botToken, botUsername]
+      properties:
+        channelType:
+          type: string
+          enum: [Telegram]
+        botToken:
+          type: string
+          description: Token del bot de Telegram. Se almacena cifrado.
+          example: "7123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw"
+        botUsername:
+          type: string
+          example: "ClinicaPerezBot"
+
+    ChatChannelResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          $ref: '#/components/schemas/ChannelType'
+        displayName:
+          type: string
+          example: "Chat del Sitio Web Principal"
+        publicApiKey:
+          type: string
+          description: API Key pública de solo lectura para el widget o webhook.
+          example: "pk_live_abc123def456..."
+        isEnabled:
+          type: boolean
+        configuration:
+          oneOf:
+            - $ref: '#/components/schemas/WebsiteChannelConfiguration'
+            - $ref: '#/components/schemas/WhatsAppChannelConfiguration'
+            - $ref: '#/components/schemas/TelegramChannelConfiguration'
+        createdAt:
+          type: string
+          format: date-time
+
+    # ── Chat ─────────────────────────────────────
+
+    SendMessageRequest:
+      type: object
+      required: [content]
+      properties:
+        externalSessionId:
+          type: string
+          description: |
+            ID de sesión generado por el cliente. Si no se provee, se crea una sesión nueva.
+            Para WhatsApp/Telegram, usar el ID del usuario del canal (ej. número de teléfono).
+          example: "user-browser-fingerprint-abc123"
+        content:
+          type: string
+          minLength: 1
+          maxLength: 1000
+          example: "¿Cuál es el precio de una limpieza dental?"
+
+    MessageResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+          example: "El precio de una limpieza dental es de $350. Incluye eliminación de sarro y pulido. ¿Te gustaría agendar una cita?"
+        createdAt:
+          type: string
+          format: date-time
+
+    SendMessageResponse:
+      type: object
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+          description: ID de la sesión de chat. Persiste entre mensajes del mismo usuario.
+        message:
+          $ref: '#/components/schemas/MessageResponse'
+
+    ChatSessionResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        externalSessionId:
+          type: string
+        channelType:
+          $ref: '#/components/schemas/ChannelType'
+        status:
+          type: string
+          enum: [Active, Closed]
+        messageCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        closedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    ChatSessionDetailResponse:
+      allOf:
+        - $ref: '#/components/schemas/ChatSessionResponse'
+        - type: object
+          properties:
+            messages:
+              type: array
+              items:
+                $ref: '#/components/schemas/MessageResponse'
+
+# ─────────────────────────────────────────────
+# PATHS
+# ─────────────────────────────────────────────
+paths:
+
+  # ══════════════════════════════════════
+  # AUTH
+  # ══════════════════════════════════════
+
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      summary: Iniciar sesión
+      description: Autentica a un administrador y devuelve un JWT de acceso y un refresh token.
+      operationId: auth_login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Autenticación exitosa.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Credenciales inválidas.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '400':
+          description: Request inválido (campos faltantes o mal formateados).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /api/v1/auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Renovar access token
+      description: Usa un refresh token válido para emitir un nuevo access token. El refresh token usado queda revocado (rotación).
+      operationId: auth_refresh
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: Nuevos tokens emitidos.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Refresh token inválido, expirado o revocado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /api/v1/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Cerrar sesión
+      description: Revoca el refresh token activo del usuario autenticado.
+      operationId: auth_logout
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '204':
+          description: Sesión cerrada. Refresh token revocado.
+        '401':
+          description: JWT inválido o expirado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  # ══════════════════════════════════════
+  # TENANTS
+  # ══════════════════════════════════════
+
+  /api/v1/tenants/register:
+    post:
+      tags: [Tenants]
+      summary: Registrar nuevo tenant
+      description: |
+        Crea un nuevo negocio (tenant) y su usuario administrador inicial.
+        Este es el endpoint de onboarding. No requiere autenticación previa.
+        Al completarse, se puede usar `POST /api/v1/auth/login` con las credenciales provistas.
+      operationId: tenants_register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterTenantRequest'
+      responses:
+        '201':
+          description: Tenant y administrador creados exitosamente.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantResponse'
+        '409':
+          description: Ya existe un tenant con ese email de administrador.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '400':
+          description: Request inválido.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /api/v1/tenants/me:
+    get:
+      tags: [Tenants]
+      summary: Obtener información del tenant actual
+      description: Devuelve los datos del tenant al que pertenece el usuario autenticado.
+      operationId: tenants_getMe
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Información del tenant.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantResponse'
+        '401':
+          description: JWT inválido o expirado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  # ══════════════════════════════════════
+  # DOCUMENTS
+  # ══════════════════════════════════════
+
+  /api/v1/documents:
+    get:
+      tags: [Documents]
+      summary: Listar documentos del tenant
+      description: Devuelve todos los documentos del tenant paginados. Incluye su estado de indexación.
+      operationId: documents_list
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+        - name: status
+          in: query
+          description: Filtrar por estado de procesamiento.
+          schema:
+            type: string
+            enum: [Uploaded, Pending, Processing, Indexed, Failed, Superseded]
+      responses:
+        '200':
+          description: Lista paginada de documentos.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentListResponse'
+        '401':
+          description: JWT inválido o expirado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+    post:
+      tags: [Documents]
+      summary: Subir documento
+      description: |
+        Sube un nuevo documento al sistema de conocimiento del tenant.
+        El archivo se guarda inmediatamente y se encola para indexación asíncrona.
+        Responde con `202 Accepted` — el procesamiento continúa en background.
+        Usar `GET /api/v1/documents/{id}` para verificar el estado.
+      operationId: documents_upload
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Archivo a subir. Tipos permitidos: .pdf, .txt. Tamaño máximo: 10 MB.
+      responses:
+        '202':
+          description: Archivo aceptado. Indexación en progreso.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentResponse'
+        '400':
+          description: Tipo de archivo no soportado o tamaño excedido.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '401':
+          description: JWT inválido o expirado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /api/v1/documents/{id}:
+    get:
+      tags: [Documents]
+      summary: Obtener documento por ID
+      description: Devuelve el estado actual de un documento, incluyendo el progreso de indexación.
+      operationId: documents_getById
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Documento encontrado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentResponse'
+        '404':
+          description: Documento no encontrado o no pertenece al tenant.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '401':
+          description: JWT inválido o expirado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+    delete:
+      tags: [Documents]
+      summary: Eliminar documento
+      description: |
+        Elimina el documento y todos sus chunks del sistema de conocimiento.
+        Esta operación es irreversible. El archivo original también se elimina del storage.
+      operationId: documents_delete
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Documento eliminado exitosamente.
+        '404':
+          description: Documento no encontrado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '409':
+          description: No se puede eliminar un documento con status Processing.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '401':
+          description: JWT inválido o expirado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /api/v1/documents/{id}/retry:
+    post:
+      tags: [Documents]
+      summary: Reintentar indexación
+      description: |
+        Re-encola un documento con status `Failed` para un nuevo intento de indexación.
+        Solo disponible para documentos en estado `Failed`.
+      operationId: documents_retry
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '202':
+          description: Documento re-encolado para indexación.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentResponse'
+        '409':
+          description: El documento no está en estado Failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '404':
+          description: Documento no encontrado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '401':
+          description: JWT inválido o expirado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  # ══════════════════════════════════════
+  # KNOWLEDGE CONFIGURATION
+  # ══════════════════════════════════════
+
+  /api/v1/knowledge/configuration:
+    get:
+      tags: [Knowledge]
+      summary: Obtener configuración de la IA
+      description: Devuelve el system prompt y los parámetros del modelo LLM del tenant.
+      operationId: knowledge_getConfiguration
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Configuración actual.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeConfigurationResponse'
+        '401':
+          description: JWT inválido o expirado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+    put:
+      tags: [Knowledge]
+      summary: Actualizar configuración de la IA
+      description: |
+        Actualiza el system prompt y/o los parámetros del modelo del tenant.
+        Todos los campos son opcionales — solo se actualizan los campos incluidos en el request.
+      operationId: knowledge_updateConfiguration
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateKnowledgeConfigurationRequest'
+      responses:
+        '200':
+          description: Configuración actualizada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeConfigurationResponse'
+        '400':
+          description: Valores fuera de rango o inválidos.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '401':
+          description: JWT inválido o expirado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  # ══════════════════════════════════════
+  # CHAT CHANNELS
+  # ══════════════════════════════════════
+
+  /api/v1/channels:
+    get:
+      tags: [Channels]
+      summary: Listar canales del tenant
+      description: Devuelve todos los canales de chat configurados para el tenant.
+      operationId: channels_list
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Lista de canales.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ChatChannelResponse'
+        '401':
+          description: JWT inválido o expirado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+    post:
+      tags: [Channels]
+      summary: Crear canal de chat
+      description: |
+        Configura un nuevo canal de comunicación para el tenant.
+        Al crearse, se genera automáticamente un `publicApiKey` único e inmutable.
+        Un tenant no puede tener dos canales activos del mismo tipo.
+      operationId: channels_create
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateChannelRequest'
+      responses:
+        '201':
+          description: Canal creado. Incluye el publicApiKey generado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatChannelResponse'
+        '409':
+          description: Ya existe un canal activo de ese tipo para el tenant.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '400':
+          description: Configuración inválida para el tipo de canal.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '401':
+          description: JWT inválido o expirado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /api/v1/channels/{id}:
+    get:
+      tags: [Channels]
+      summary: Obtener canal por ID
+      operationId: channels_getById
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Canal encontrado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatChannelResponse'
+        '404':
+          description: Canal no encontrado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '401':
+          description: JWT inválido o expirado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+    patch:
+      tags: [Channels]
+      summary: Actualizar canal
+      description: Actualiza la configuración o el estado (habilitado/deshabilitado) de un canal.
+      operationId: channels_update
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                displayName:
+                  type: string
+                isEnabled:
+                  type: boolean
+                configuration:
+                  oneOf:
+                    - $ref: '#/components/schemas/WebsiteChannelConfiguration'
+                    - $ref: '#/components/schemas/WhatsAppChannelConfiguration'
+                    - $ref: '#/components/schemas/TelegramChannelConfiguration'
+      responses:
+        '200':
+          description: Canal actualizado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatChannelResponse'
+        '404':
+          description: Canal no encontrado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '401':
+          description: JWT inválido o expirado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+    delete:
+      tags: [Channels]
+      summary: Eliminar canal
+      description: Elimina el canal y todas sus sesiones de chat asociadas. Operación irreversible.
+      operationId: channels_delete
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Canal eliminado.
+        '404':
+          description: Canal no encontrado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '401':
+          description: JWT inválido o expirado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  # ══════════════════════════════════════
+  # CHAT (endpoint público del concierge)
+  # ══════════════════════════════════════
+
+  /api/v1/chat/message:
+    post:
+      tags: [Chat]
+      summary: Enviar mensaje al concierge
+      description: |
+        **Endpoint público del concierge.** Recibe el mensaje de un usuario final
+        y devuelve la respuesta generada por la IA usando el pipeline RAG.
+
+        Autenticación: usa el `publicApiKey` del `ChatChannel` en el header `X-Api-Key`.
+        Este key está diseñado para ser embebido en el widget web o configurado en los
+        webhooks de WhatsApp/Telegram.
+
+        Si no se provee `externalSessionId`, se crea una nueva sesión automáticamente.
+        Para mantener el historial de conversación, el cliente debe persistir y enviar
+        el mismo `externalSessionId` en cada mensaje de la misma conversación.
+      operationId: chat_sendMessage
+      security:
+        - PublicApiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendMessageRequest'
+      responses:
+        '200':
+          description: Respuesta del concierge generada exitosamente.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SendMessageResponse'
+        '403':
+          description: PublicApiKey inválido o canal deshabilitado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '400':
+          description: Mensaje vacío o excede el límite de caracteres.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '503':
+          description: El proveedor de LLM no está disponible.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /api/v1/chat/sessions:
+    get:
+      tags: [Chat]
+      summary: Listar sesiones de chat del tenant
+      description: |
+        Devuelve el historial de sesiones de chat del tenant paginado.
+        Disponible solo para administradores autenticados.
+      operationId: chat_listSessions
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: channelId
+          in: query
+          description: Filtrar por canal específico.
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [Active, Closed]
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+      responses:
+        '200':
+          description: Lista paginada de sesiones.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ChatSessionResponse'
+                  totalCount:
+                    type: integer
+                  page:
+                    type: integer
+                  pageSize:
+                    type: integer
+        '401':
+          description: JWT inválido o expirado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /api/v1/chat/sessions/{id}:
+    get:
+      tags: [Chat]
+      summary: Obtener sesión con mensajes
+      description: Devuelve una sesión de chat con su historial completo de mensajes.
+      operationId: chat_getSession
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Sesión con mensajes.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatSessionDetailResponse'
+        '404':
+          description: Sesión no encontrada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '401':
+          description: JWT inválido o expirado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'

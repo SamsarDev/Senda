@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Senda.Api/Senda.Api.csproj" />
+    <Project Path="src/Senda.Application/Senda.Application.csproj" />
+    <Project Path="src/Senda.Core/Senda.Core.csproj" />
+    <Project Path="src/Senda.Infrastructure/Senda.Infrastructure.csproj" />
+  </Folder>
+</Solution>
