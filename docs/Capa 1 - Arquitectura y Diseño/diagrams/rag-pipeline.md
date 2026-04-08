@@ -8,6 +8,7 @@ El pipeline RAG (Retrieval-Augmented Generation) es el corazón del módulo AI C
 
 Se ejecuta de forma asíncrona en el `Background Worker` cada vez que un administrador sube un documento nuevo o actualizado.
 
+```mermaid
       subgraph API ["🌐 Senda API / Application — Request síncrono"]
         B[Validar archivo\nTipo: PDF, TXT, CSV\nTamaño máximo]
         B --> C[Guardar archivo\nen Storage]
