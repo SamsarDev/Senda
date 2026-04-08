@@ -30,6 +30,23 @@ public static class DependencyInjection
         services.AddScoped<TenantContext>();
         services.AddScoped<ITenantContext>(sp => sp.GetRequiredService<TenantContext>());
 
+        // AI Services
+        services.AddScoped<ITextEmbeddingService, OllamaEmbeddingService>();
+        services.AddScoped<IChatCompletionService, OllamaChatCompletionService>();
+
+        // Storage Services
+        services.AddScoped<IFileStorageService, FileStorageService>();
+
+        // Orchestration Services
+        services.AddScoped<ITextExtractorService, TextExtractorService>();
+        services.AddScoped<ITextChunkerService, TextChunkerService>();
+
+        // Repositories
+        services.AddScoped<ITenantRepository, TenantRepository>();
+        services.AddScoped<IKnowledgeRepository, KnowledgeRepository>();
+        services.AddScoped<IChatRepository, ChatRepository>();
+        services.AddScoped<IVectorSearchRepository, VectorSearchRepository>();
+
         return services;
     }
 
