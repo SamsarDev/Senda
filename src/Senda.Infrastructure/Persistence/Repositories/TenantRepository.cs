@@ -25,11 +25,9 @@ public class TenantRepository : ITenantRepository
             .FirstOrDefaultAsync(t => t.Id == id && t.IsActive);
     }
 
-    public async Task<IEnumerable<Tenant>> GetAllActiveAsync()
+    public async Task<IEnumerable<Tenant>> GetAllAsync()
     {
-        return await _context.Tenants
-            .Where(t => t.IsActive)
-            .ToListAsync();
+        return await _context.Tenants.ToListAsync();
     }
 
     public async Task AddAsync(Tenant tenant)
@@ -42,5 +40,15 @@ public class TenantRepository : ITenantRepository
     {
         _context.Tenants.Update(tenant);
         await _context.SaveChangesAsync();
+    }
+
+    public async Task DeleteAsync(Guid id)
+    {
+        var tenant = await _context.Tenants.FindAsync(id);
+        if (tenant != null)
+        {
+            _context.Tenants.Remove(tenant);
+            await _context.SaveChangesAsync();
+        }
     }
 }

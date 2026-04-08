@@ -8,9 +8,9 @@ using Senda.Core.Services;
 
 namespace Senda.Infrastructure.AI;
 
-public class OllamaChatCompletionService : IChatCompletionService
+public class OllamaChatCompletionService : Senda.Core.Services.IChatCompletionService
 {
-    private readonly IChatCompletionService _chatService;
+    private readonly Microsoft.SemanticKernel.ChatCompletion.IChatCompletionService _chatService;
     private readonly Kernel _kernel;
 
     public OllamaChatCompletionService(IConfiguration configuration)
@@ -20,14 +20,16 @@ public class OllamaChatCompletionService : IChatCompletionService
 
         var builder = Kernel.CreateBuilder();
         
+        using var httpClient = new System.Net.Http.HttpClient { BaseAddress = new Uri(endpoint) };
+        
         builder.AddOpenAIChatCompletion(
             modelId: modelId,
             apiKey: "ollama",
-            endpoint: new Uri($"{endpoint.TrimEnd('/')}/v1")
+            httpClient: httpClient
         );
 
         _kernel = builder.Build();
-        _chatService = _kernel.GetRequiredService<IChatCompletionService>();
+        _chatService = _kernel.GetRequiredService<Microsoft.SemanticKernel.ChatCompletion.IChatCompletionService>();
     }
 
     public async Task<string> GetReplyAsync(

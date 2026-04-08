@@ -14,11 +14,11 @@ public class ChatRepository : IChatRepository
         _context = context;
     }
 
-    public async Task<ChatSession?> GetSessionByIdAsync(Guid id)
+    public async Task<ChatSession?> GetSessionWithMessagesAsync(Guid sessionId)
     {
         return await _context.ChatSessions
             .Include(s => s.Messages.OrderBy(m => m.CreatedAt))
-            .FirstOrDefaultAsync(s => s.Id == id);
+            .FirstOrDefaultAsync(s => s.Id == sessionId);
     }
 
     public async Task AddSessionAsync(ChatSession session)

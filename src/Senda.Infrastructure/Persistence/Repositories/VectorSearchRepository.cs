@@ -18,17 +18,15 @@ public class VectorSearchRepository : IVectorSearchRepository
 
     public async Task<IEnumerable<KnowledgeChunk>> SearchSimilarChunksAsync(
         Guid tenantId, 
-        float[] queryEmbedding, 
-        int limit = 5)
+        ReadOnlyMemory<float> queryEmbedding, 
+        int maxResults = 5)
     {
-        var vector = new Vector(queryEmbedding);
+        var vector = new Vector(queryEmbedding.ToArray());
 
-        // L2 distance search (can also use Coseno distance with <-> or <=> operator)
-        // Pgvector in EF Core uses specialized operators
         return await _context.KnowledgeChunks
             .Where(c => c.TenantId == tenantId)
             .OrderBy(c => c.Embedding!.L2Distance(vector))
-            .Take(limit)
+            .Take(maxResults)
             .ToListAsync();
     }
 }

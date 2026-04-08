@@ -47,6 +47,13 @@ public class KnowledgeRepository : IKnowledgeRepository
         await _context.SaveChangesAsync();
     }
 
+    public async Task<IEnumerable<KnowledgeChunk>> GetChunksByDocumentIdAsync(Guid documentId)
+    {
+        return await _context.KnowledgeChunks
+            .Where(c => c.DocumentId == documentId)
+            .ToListAsync();
+    }
+
     public async Task DeleteDocumentAsync(Guid id)
     {
         var doc = await _context.KnowledgeDocuments.FindAsync(id);

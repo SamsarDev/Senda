@@ -1,8 +1,13 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Senda.Application.Services;
 using Senda.Core.Interfaces;
+using Senda.Core.Repositories;
+using Senda.Core.Services;
+using Senda.Infrastructure.AI;
 using Senda.Infrastructure.Persistence;
+using Senda.Infrastructure.Persistence.Repositories;
 using Senda.Infrastructure.Services;
 
 namespace Senda.Infrastructure;

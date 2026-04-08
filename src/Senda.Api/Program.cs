@@ -1,5 +1,6 @@
 using Senda.Application;
 using Senda.Infrastructure;
+using Senda.Api.Middlewares;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -19,5 +20,9 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+app.UseTenantMiddleware();
+
+app.MapControllers();
 
 app.Run();

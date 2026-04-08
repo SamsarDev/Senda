@@ -17,11 +17,13 @@ public class OllamaEmbeddingService : ITextEmbeddingService
         // Using OpenAI connector for Ollama (OpenAI compatible API)
         var builder = Kernel.CreateBuilder();
         
+        using var httpClient = new System.Net.Http.HttpClient { BaseAddress = new Uri(endpoint) };
+        
         #pragma warning disable SKEXP0070
         builder.AddOpenAITextEmbeddingGeneration(
             modelId: modelId,
-            apiKey: "ollama", // Not used but required by connector
-            endpoint: new Uri($"{endpoint.TrimEnd('/')}/v1")
+            apiKey: "ollama",
+            httpClient: httpClient
         );
         #pragma warning restore SKEXP0070
 
