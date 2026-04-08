@@ -8,37 +8,23 @@ El pipeline RAG (Retrieval-Augmented Generation) es el corazón del módulo AI C
 
 Se ejecuta de forma asíncrona en el `Background Worker` cada vez que un administrador sube un documento nuevo o actualizado.
 
-```mermaid
-flowchart TD
-    A([👤 Administrador\nsube archivo]) --> B
-
-    subgraph API ["🌐 Senda API — Request síncrono"]
-        B[Validar archivo\nTipo: PDF o TXT\nTamaño máximo]
+      subgraph API ["🌐 Senda API / Application — Request síncrono"]
+        B[Validar archivo\nTipo: PDF, TXT, CSV\nTamaño máximo]
         B --> C[Guardar archivo\nen Storage]
-        C --> D[Crear entidad Document\nStatus: Uploaded]
-        D --> E[Encolar job\nen IBackgroundTaskQueue\nStatus → Pending]
-        E --> F([✅ 202 Accepted\ndevuelto al cliente])
-    end
-
-    subgraph WORKER ["⚙️ Background Worker — Procesamiento asíncrono"]
-        G[Desencolar job\nStatus → Processing]
-        G --> H{¿Qué tipo\nde archivo?}
-        H -- PDF --> I[PdfTextExtractor\nExtrae texto plano\nvia PdfPig]
-        H -- TXT --> J[TxtTextExtractor\nLee contenido UTF-8]
+        C --> D[Crear entidad KnowledgeDocument\nStatus: Processing]
+        D --> H{¿Qué tipo\nde archivo?}
+        H -- PDF --> I[TextExtractorService\nExtrae texto plano\nvia PdfPig]
+        H -- TXT/CSV --> J[TextExtractorService\nLee contenido Stream]
         I --> K
         J --> K
-        K[TextChunker\n512 tokens por chunk\n100 tokens de overlap]
-        K --> L[Para cada chunk:\nLlamar a IEmbeddingService]
-        L --> M{¿Proveedor\nconfigurado?}
-        M -- OpenAI default --> N[text-embedding-3-small\nOpenAI API\nVector 1536 dims]
-        M -- Ollama local --> O[nomic-embed-text\nOllama API\nVector 768 dims]
-        N --> P
-        O --> P
-        P[Guardar DocumentChunk\nen PostgreSQL + pgvector\nContent + Embedding + TenantId]
+        K[TextChunkerService\nEstrategia de palabras\ncon overlap]
+        K --> L[Para cada chunk:\nLlamar a ITextEmbeddingService]
+        L --> M[Ollama / OpenAI\nVector 1536 dims]
+        M --> P[Guardar KnowledgeChunk\nen PostgreSQL + pgvector\nContent + Embedding + TenantId]
         P --> Q{¿Más chunks\npor procesar?}
         Q -- Sí --> L
-        Q -- No --> R[Actualizar Document\nStatus → Indexed\nChunkCount = N\nIndexedAt = now]
-        R --> S([✅ Documento disponible\npara consultas RAG])
+        Q -- No --> R[Actualizar KnowledgeDocument\nStatus → Completed\nChunkCount = N\nProcessedAt = now]
+        R --> S([✅ Procesamiento Finalizado\ndevuelto al cliente])
     end
 
     subgraph ERROR ["❌ Manejo de errores"]
@@ -77,18 +63,15 @@ flowchart TD
 
     subgraph RAG ["🧠 Pipeline RAG — Orquestado por Semantic Kernel"]
         H[Guardar ChatMessage\nRole: User\nen la sesión]
-        H --> I[Generar embedding\nde la pregunta del usuario\nvia IEmbeddingService]
-        I --> J[Búsqueda vectorial\nen PostgreSQL + pgvector\nWHERE tenant_id = X\nORDER BY embedding <=> queryVector\nLIMIT MaxContextChunks]
-        J --> K[Recuperar N chunks\nmás relevantes\ndefault: 5 chunks]
+        H --> I[Generar embedding\nde la pregunta del usuario\nvia ITextEmbeddingService]
+        I --> J[Búsqueda vectorial\nen PostgreSQL + pgvector\nWHERE tenant_id = X\nORDER BY L2Distance(queryVector)\nLIMIT MaxResults]
+        J --> K[Recuperar N chunks\nmás relevantes]
         K --> L[Construir prompt\ncon Semantic Kernel]
-        L --> M["Prompt final:\n[System Prompt del tenant]\n---\nCONTEXTO RECUPERADO:\n{chunk_1}\n{chunk_2}\n...{chunk_N}\n---\nHISTORIAL:\n{últimos M mensajes}\n---\nPREGUNTA: {mensaje usuario}"]
-        M --> N{¿Proveedor LLM\nconfigurado?}
-        N -- OpenAI default --> O[GPT-4o-mini\nOpenAI Chat Completion API]
-        N -- Ollama local --> P[Llama 3 u otro\nOllama Chat Completion API]
-        O --> Q
-        P --> Q
+        L --> M["Prompt final:\n[Contexto Recuperado]\n---\n[Historial reciente]\n---\n[Pregunta]"]
+        M --> N[Ollama / OpenAI\nChat Completion Service]
+        N --> Q
         Q[Respuesta del LLM]
-        Q --> R[Guardar ChatMessage\nRole: Assistant\nContent: respuesta\nModelUsed + Tokens\nRetrievedChunkIds]
+        Q --> R[Guardar ChatMessage\nRole: Assistant\nContent: respuesta\nSourceContext: metadata]
     end
 
     subgraph RESPONSE ["📤 Respuesta al cliente"]
@@ -132,9 +115,10 @@ flowchart LR
 
 | Componente | Responsabilidad en el Pipeline |
 |---|---|
-| `ITextExtractorService` | Extrae texto plano de PDF o TXT |
-| `ITextChunkerService` | Divide el texto en chunks de 512 tokens con 100 de overlap |
-| `IEmbeddingService` | Genera el vector de 1536 dims (OpenAI) o 768 dims (Ollama) |
-| `IDocumentChunkRepository` | Persiste y consulta chunks en PostgreSQL + pgvector |
-| `IChatOrchestrationService` | Coordina el flujo completo de recuperación vía Semantic Kernel |
-| `IFileStorageService` | Lee y escribe archivos en el sistema de almacenamiento |
+| `ITextExtractorService` | Extrae texto plano de PDF, TXT o CSV |
+| `ITextChunkerService` | Divide el texto en fragmentos con solapamiento |
+| `ITextEmbeddingService` | Genera el vector de 1536 dims (Ollama/OpenAI) |
+| `IVectorSearchRepository` | Consulta chunks similares en PostgreSQL + pgvector |
+| `IChatCompletionService` | Coordina la respuesta RAG vía Semantic Kernel |
+| `IFileStorageService` | Gestiona el almacenamiento físico (Azure/Local) |
+| `IKnowledgeRepository` | Persiste metadatos de documentos y chunks |

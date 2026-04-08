@@ -97,7 +97,7 @@ public class Tenant : IAuditableEntity
 
     // Relaciones (navigation properties)
     public IReadOnlyCollection<User> Users { get; }
-    public IReadOnlyCollection<Document> Documents { get; }
+    public IReadOnlyCollection<KnowledgeDocument> Documents { get; }
     public IReadOnlyCollection<ChatSession> ChatSessions { get; }
     public IReadOnlyCollection<ChatChannel> ChatChannels { get; }
     public KnowledgeConfiguration? KnowledgeConfiguration { get; }
@@ -210,51 +210,42 @@ public class KnowledgeConfiguration : ITenantEntity, IAuditableEntity
 
 ---
 
-### 4.5 Document
+### 4.5 KnowledgeDocument
 **Tipo:** Aggregate Root  
 **Proyecto:** `Senda.Core.AIConcierge`
 
 Representa un archivo subido por el administrador del tenant. Gestiona su propio ciclo de vida de procesamiento (indexación RAG).
 
 ```csharp
-public class Document : ITenantEntity, IAuditableEntity
+public class KnowledgeDocument : ITenantEntity, IAuditableEntity
 {
     public Guid Id { get; private set; }
     public Guid TenantId { get; private set; }
     public string FileName { get; private set; }           // Nombre original del archivo. Ej: "menu_2024.pdf"
     public string StoragePath { get; private set; }        // Ruta en el sistema de archivos o blob storage
-    public DocumentFileType FileType { get; private set; } // Enum: Pdf, Txt
+    public string ContentType { get; private set; }        // Tipo MIME
     public long FileSizeBytes { get; private set; }
-    public DocumentProcessingStatus Status { get; private set; }
+    public KnowledgeDocumentStatus Status { get; private set; }
     public string? ProcessingError { get; private set; }   // Detalle del error si Status = Failed
-    public int ChunkCount { get; private set; }            // Total de chunks generados. 0 hasta que Status = Indexed
+    public int ChunkCount { get; private set; }            // Total de chunks generados. 0 hasta que Status = Completed
     public DateTime CreatedAt { get; private set; }
     public DateTime? UpdatedAt { get; private set; }
-    public DateTime? IndexedAt { get; private set; }       // Timestamp de cuando Status pasó a Indexed
+    public DateTime? ProcessedAt { get; private set; }     // Timestamp de cuando Status pasó a Completed
 
     // Relaciones
     public Tenant Tenant { get; }
-    public IReadOnlyCollection<DocumentChunk> Chunks { get; }
+    public IReadOnlyCollection<KnowledgeChunk> Chunks { get; }
 }
 ```
 
 **Value Objects:**
 
 ```csharp
-public enum DocumentFileType
+public enum KnowledgeDocumentStatus
 {
-    Pdf,
-    Txt
-}
-
-public enum DocumentProcessingStatus
-{
-    Uploaded,    // Archivo recibido y almacenado. Aún no encolado.
-    Pending,     // Encolado para procesamiento en background.
     Processing,  // Extracción, chunking y embedding en curso.
-    Indexed,     // Todos los chunks generados. Disponible para RAG.
-    Failed,      // El procesamiento falló. Ver ProcessingError.
-    Superseded   // Reemplazado por una versión más nueva del mismo documento.
+    Completed,   // Todos los chunks generados. Disponible para RAG.
+    Failed       // El procesamiento falló. Ver ProcessingError.
 }
 ```
 
@@ -274,25 +265,24 @@ public void MarkAsSuperseded()      // Indexed → Superseded
 
 ---
 
-### 4.6 DocumentChunk
-**Tipo:** Entity (pertenece al agregado Document)  
+### 4.6 KnowledgeChunk
+**Tipo:** Entity (pertenece al agregado KnowledgeDocument)  
 **Proyecto:** `Senda.Core.AIConcierge`
 
 Representa un fragmento semántico de un documento, con su texto y su vector de embedding. Es la unidad de búsqueda en pgvector.
 
 ```csharp
-public class DocumentChunk : ITenantEntity
+public class KnowledgeChunk : ITenantEntity
 {
     public Guid Id { get; private set; }
     public Guid DocumentId { get; private set; }
     public Guid TenantId { get; private set; }         // Desnormalizado para Global Query Filter y búsqueda vectorial eficiente
     public string Content { get; private set; }        // Texto del chunk
     public int ChunkIndex { get; private set; }        // Posición ordinal dentro del documento (0-based)
-    public int TokenCount { get; private set; }        // Tokens reales del chunk (puede variar del tamaño nominal)
-    public float[] Embedding { get; private set; }     // Vector de 1536 dimensiones (text-embedding-3-small)
+    public Pgvector.Vector Embedding { get; private set; } // Vector de 1536 dimensiones (nomic-embed-text)
 
     // Relaciones
-    public Document Document { get; }
+    public KnowledgeDocument Document { get; }
 }
 ```
 

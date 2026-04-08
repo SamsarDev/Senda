@@ -2,18 +2,12 @@
 
 Resumen navegable del contrato de la API. La fuente de verdad completa está en [`openapi.yaml`](./openapi.yaml), importable en Swagger UI, Scalar o Postman.
 
-**Base URL local:** `http://localhost:5000/api/v1`
-
----
-
-## Autenticación
-
-El sistema usa dos mecanismos según el tipo de cliente:
-
 | Mecanismo | Header | Usado en |
 |---|---|---|
-| **JWT Bearer** | `Authorization: Bearer <token>` | Todos los endpoints del dashboard administrativo |
-| **PublicApiKey** | `X-Api-Key: pk_live_...` | Solo `POST /chat/message` (endpoint público del widget) |
+| **Tenant ID** | `X-Tenant-Id: <uuid>` | Todos los endpoints (MVP) |
+
+### Base URL local
+`http://localhost:5231/api`
 
 ### Obtener un token JWT
 
@@ -81,69 +75,47 @@ Todos los errores siguen el estándar **RFC 7807 Problem Details**:
 
 | Método | Endpoint | Auth | Descripción |
 |---|---|---|---|
-| `POST` | `/tenants/register` | ❌ | Registrar nuevo tenant y admin inicial. |
-| `GET` | `/tenants/me` | 🔐 JWT | Ver información del tenant actual. |
+| `POST` | `/Tenants` | ❌ | Registrar nuevo tenant. |
+| `GET` | `/Tenants` | ❌ | Listar todos los tenants activos. |
 
 #### Registro de nuevo tenant
 
 ```http
-POST /api/v1/tenants/register
-Content-Type: application/json
-
-{
-  "businessName": "Clínica Dental Pérez",
-  "adminEmail": "admin@clinicaperez.com",
-  "adminPassword": "MiContraseña123!",
-  "adminFirstName": "Carlos",
-  "adminLastName": "Pérez"
-}
+POST /api/Tenants?name=Clínica Dental Pérez
 ```
 
-**Respuesta `201 Created`:**
+**Respuesta `200 OK`:**
 ```json
 {
   "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
   "name": "Clínica Dental Pérez",
-  "slug": "clinica-dental-perez",
-  "isActive": true,
-  "createdAt": "2025-01-15T12:00:00Z"
+  "isActive": true
 }
 ```
 
 ---
 
-### Documents — Base de conocimiento RAG
+### Knowledge — Base de conocimiento RAG
 
 | Método | Endpoint | Auth | Descripción |
 |---|---|---|---|
-| `GET` | `/documents` | 🔐 JWT | Listar documentos con paginación y filtros. |
-| `POST` | `/documents` | 🔐 JWT | Subir nuevo documento (PDF o TXT). Responde `202`. |
-| `GET` | `/documents/{id}` | 🔐 JWT | Ver estado de un documento. |
-| `DELETE` | `/documents/{id}` | 🔐 JWT | Eliminar documento y sus chunks. |
-| `POST` | `/documents/{id}/retry` | 🔐 JWT | Re-intentar indexación de un documento `Failed`. |
+| `GET` | `/Knowledge/documents` | 🔑 Tenant | Listar documentos del tenant. |
+| `POST` | `/Knowledge/upload` | 🔑 Tenant | Subir nuevo documento (PDF, TXT, CSV). |
 
 #### Subir un documento
 
 ```http
-POST /api/v1/documents
-Authorization: Bearer <token>
+POST /api/Knowledge/upload
+X-Tenant-Id: <uuid>
 Content-Type: multipart/form-data
 
 file: <archivo.pdf>
 ```
 
-**Respuesta `202 Accepted`:**
+**Respuesta `200 OK`:**
 ```json
 {
-  "id": "8a1b2c3d-4e5f-6789-abcd-ef0123456789",
-  "fileName": "catalogo_servicios_2024.pdf",
-  "fileType": "Pdf",
-  "fileSizeBytes": 204800,
-  "status": "Pending",
-  "processingError": null,
-  "chunkCount": 0,
-  "createdAt": "2025-01-15T12:05:00Z",
-  "indexedAt": null
+  "documentId": "8a1b2c3d-4e5f-6789-abcd-ef0123456789"
 }
 ```
 
@@ -280,24 +252,23 @@ Content-Type: application/json
 
 ---
 
-### Chat — Concierge de IA (endpoint público)
+### Chat — Concierge de IA
 
 | Método | Endpoint | Auth | Descripción |
 |---|---|---|---|
-| `POST` | `/chat/message` | 🔑 ApiKey | Enviar mensaje. Recibe respuesta RAG del concierge. |
-| `GET` | `/chat/sessions` | 🔐 JWT | Listar sesiones del tenant (dashboard admin). |
-| `GET` | `/chat/sessions/{id}` | 🔐 JWT | Ver sesión con historial completo de mensajes. |
+| `POST` | `/Chat/send` | 🔑 Tenant | Enviar mensaje y recibir respuesta RAG. |
 
-#### Enviar un mensaje (desde el widget web)
+#### Enviar un mensaje
 
 ```http
-POST /api/v1/chat/message
-X-Api-Key: pk_live_abc123def456...
+POST /api/Chat/send
+X-Tenant-Id: <uuid>
 Content-Type: application/json
 
 {
-  "externalSessionId": "browser-session-xyz789",
-  "content": "¿Cuál es el precio de una limpieza dental?"
+  "sessionId": null,
+  "customerIdentifier": "user-123",
+  "message": "¿Qué horarios tienen?"
 }
 ```
 
@@ -305,12 +276,8 @@ Content-Type: application/json
 ```json
 {
   "sessionId": "session-uuid",
-  "message": {
-    "id": "msg-uuid",
-    "role": "assistant",
-    "content": "El precio de una limpieza dental es de $350. Incluye eliminación de sarro y pulido profesional. ¿Te gustaría agendar una cita?",
-    "createdAt": "2025-01-15T14:25:30Z"
-  }
+  "reply": "Atendemos de Lunes a Viernes de 9am a 6pm...",
+  "sourceContext": "Horario de atención: Lunes a Viernes..."
 }
 ```
 
