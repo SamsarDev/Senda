@@ -12,7 +12,7 @@ Se ejecuta de forma asíncrona en el `Background Worker` cada vez que un adminis
 flowchart TD
     A([👤 Administrador\nsube archivo]) --> B
 
-    subgraph API ["🌐 Senda API / Application — Request síncrono"]
+      subgraph API ["🌐 Senda API / Application — Request síncrono"]
         B[Validar archivo\nTipo: PDF, TXT, CSV\nTamaño máximo]
         B --> C[Guardar archivo\nen Storage]
         C --> D[Crear entidad KnowledgeDocument\nStatus: Processing]
