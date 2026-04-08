@@ -49,8 +49,13 @@ public class SendaDbContext : DbContext
     {
         var parameter = System.Linq.Expressions.Expression.Parameter(entityType, "e");
         var property = System.Linq.Expressions.Expression.Property(parameter, nameof(ITenantEntity.TenantId));
+        
+        // Convert Guid to Guid? so it matches _tenantContext.TenantId type
+        var propertyAsNullable = System.Linq.Expressions.Expression.Convert(property, typeof(Guid?));
+        
         var tenantIdExpression = System.Linq.Expressions.Expression.Constant(_tenantContext.TenantId, typeof(Guid?));
-        var equals = System.Linq.Expressions.Expression.Equal(property, tenantIdExpression);
+        var equals = System.Linq.Expressions.Expression.Equal(propertyAsNullable, tenantIdExpression);
+        
         return System.Linq.Expressions.Expression.Lambda(equals, parameter);
     }
 

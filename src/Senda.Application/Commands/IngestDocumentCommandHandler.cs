@@ -1,4 +1,5 @@
 using MediatR;
+using Pgvector;
 using Senda.Application.DTOs;
 using Senda.Application.Services;
 using Senda.Core.Entities;
@@ -78,7 +79,7 @@ public class IngestDocumentCommandHandler : IRequestHandler<IngestDocumentComman
                 DocumentId = document.Id,
                 TenantId = request.TenantId,
                 Content = chunkContent,
-                Embedding = embedding,
+                Embedding = new Vector(embedding),
                 TokenCount = chunkContent.Split(' ').Length // Approximate token count
             };
 

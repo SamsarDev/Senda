@@ -1,7 +1,7 @@
 services:
   # Base de Datos con soporte para Vectores (RAG)
   senda-db:
-    image: ankane/pgvector:latest
+    image: docker.io/ankane/pgvector:latest
     container_name: senda-db
     restart: always
     environment:
@@ -54,7 +54,7 @@ services:
   # Orquestador Local de IA (Opcional para desarrollo/privacidad local)
   # Útil para probar modelos como Llama 3 o Mistral sin costo de API
   ollama:
-    image: ollama/ollama:latest
+    image: docker.io/ollama/ollama:latest
     container_name: senda-ollama
     volumes:
       - ollama_data:/root/.ollama
