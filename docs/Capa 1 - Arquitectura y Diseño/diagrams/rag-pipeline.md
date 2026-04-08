@@ -32,8 +32,8 @@ flowchart TD
     end
 
     subgraph ERROR ["❌ Manejo de errores"]
-        T[Error en cualquier paso] --> U[Actualizar KnowledgeDocument\nStatus → Failed\nProcessingError = detalle]
-        U --> V([🔔 Admin puede\nreintentar desde dashboard])
+        T[Error en cualquier paso] --> UE[Actualizar KnowledgeDocument\nStatus → Failed\nProcessingError = detalle]
+        UE --> V([🔔 Admin puede\nreintentar desde dashboard])
     end
 
     L -.->|"Error de API\no IO"| T
@@ -66,7 +66,7 @@ flowchart TD
     subgraph RAG ["🧠 Pipeline RAG — Orquestado por Semantic Kernel"]
         H[Guardar ChatMessage\nRole: User\nen la sesión]
         H --> I[Generar embedding\nde la pregunta del usuario\nvia ITextEmbeddingService]
-        I --> J[Búsqueda vectorial\nen PostgreSQL + pgvector\nWHERE tenant_id = X\nORDER BY L2Distance(queryVector)\nLIMIT MaxResults]
+        I --> J["Búsqueda vectorial\nen PostgreSQL + pgvector\nWHERE tenant_id = X\nORDER BY L2Distance(queryVector)\nLIMIT MaxResults"]
         J --> K[Recuperar N chunks\nmás relevantes]
         K --> L[Construir prompt\ncon Semantic Kernel]
         L --> M["Prompt final:\n[Contexto Recuperado]\n---\n[Historial reciente]\n---\n[Pregunta]"]
@@ -82,8 +82,8 @@ flowchart TD
     end
 
     subgraph NOCONTEXT ["⚠️ Sin contexto relevante"]
-        J -.->|"Similitud < umbral\n o sin documentos indexados"| U[Respuesta de fallback\ndefinida en KnowledgeConfiguration\nEj: 'No tengo información\nsobre ese tema.']
-        U --> R
+        J -.->|"Similitud < umbral\n o sin documentos indexados"| UF[Respuesta de fallback\ndefinida en KnowledgeConfiguration\nEj: 'No tengo información\nsobre ese tema.']
+        UF --> R
     end
 
     style AUTH fill:#fff3e0,stroke:#FF9800
