@@ -18,6 +18,11 @@ Hemos completado la implementación de las Fases 1 a 4, logrando un MVP funciona
 - **Dashboard**: Interfaz moderna para gestionar documentos y empresas.
 - **Chat Playground**: Área de pruebas para interactuar con la IA y visualizar el contexto recuperado.
 
+### 4. Dockerización y Despliegue
+- **Backend Docker**: Imagen optimizada basada en .NET 10.0.
+- **Frontend Docker**: Servido vía Nginx para alta eficiencia.
+- **Orquestación**: Listos para `docker-compose up -d`.
+
 ---
 
 ## 🛠️ Cómo Iniciar el Proyecto
