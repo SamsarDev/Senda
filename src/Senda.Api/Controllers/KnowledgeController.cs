@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.AspNetCore.Mvc;
 using Senda.Application.Commands;
 using Senda.Core.Interfaces;
+using Senda.Core.Repositories;
 
 namespace Senda.Api.Controllers;
 
@@ -11,11 +12,23 @@ public class KnowledgeController : ControllerBase
 {
     private readonly IMediator _mediator;
     private readonly ITenantContext _tenantContext;
+    private readonly IKnowledgeRepository _knowledgeRepository;
 
-    public KnowledgeController(IMediator mediator, ITenantContext tenantContext)
+    public KnowledgeController(IMediator mediator, ITenantContext tenantContext, IKnowledgeRepository knowledgeRepository)
     {
         _mediator = mediator;
         _tenantContext = tenantContext;
+        _knowledgeRepository = knowledgeRepository;
+    }
+
+    [HttpGet("documents")]
+    public async Task<IActionResult> GetDocuments()
+    {
+        if (_tenantContext.TenantId == null)
+            return Unauthorized("X-Tenant-Id header is required.");
+
+        var documents = await _knowledgeRepository.GetDocumentsByTenantAsync(_tenantContext.TenantId.Value);
+        return Ok(documents);
     }
 
     [HttpPost("upload")]
