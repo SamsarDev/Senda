@@ -1,3 +1,4 @@
+using FluentValidation;
 using Microsoft.Extensions.DependencyInjection;
 using Senda.Application.Commands;
 using Senda.Application.Services;

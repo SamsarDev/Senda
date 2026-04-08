@@ -1,20 +1,14 @@
-using Microsoft.EntityFrameworkCore;
-using Senda.Infrastructure.Persistence;
+using Senda.Application;
+using Senda.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Add layers
+builder.Services.AddApplication();
+builder.Services.AddInfrastructure(builder.Configuration);
 
-// Add services to the container.
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-// Configurar PostgreSQL con soporte para vectores
-builder.Services
-    .AddDbContext<SendaDbContext>(options =>
-        options.UseNpgsql(
-            builder.Configuration.GetConnectionString("DefaultConnection"), 
-            o => o.UseVector()
-        )
-    ) // Habilita el mapeo de tipos de vectores
-    .AddOpenApi();
+builder.Services.AddControllers();
+builder.Services.AddOpenApi();
 
 var app = builder.Build();
 

@@ -4,6 +4,11 @@ public class DocumentProcessingException : Exception
 {
     public Guid DocumentId { get; }
 
+    public DocumentProcessingException(string message)
+        : base(message)
+    {
+    }
+
     public DocumentProcessingException(Guid documentId, string message)
         : base($"Error processing document '{documentId}': {message}")
     {
