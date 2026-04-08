@@ -8,7 +8,11 @@ El pipeline RAG (Retrieval-Augmented Generation) es el corazón del módulo AI C
 
 Se ejecuta de forma asíncrona en el `Background Worker` cada vez que un administrador sube un documento nuevo o actualizado.
 
-      subgraph API ["🌐 Senda API / Application — Request síncrono"]
+```mermaid
+flowchart TD
+    A([👤 Administrador\nsube archivo]) --> B
+
+    subgraph API ["🌐 Senda API / Application — Request síncrono"]
         B[Validar archivo\nTipo: PDF, TXT, CSV\nTamaño máximo]
         B --> C[Guardar archivo\nen Storage]
         C --> D[Crear entidad KnowledgeDocument\nStatus: Processing]
@@ -28,15 +32,13 @@ Se ejecuta de forma asíncrona en el `Background Worker` cada vez que un adminis
     end
 
     subgraph ERROR ["❌ Manejo de errores"]
-        T[Error en cualquier paso] --> U[Actualizar Document\nStatus → Failed\nProcessingError = detalle]
+        T[Error en cualquier paso] --> U[Actualizar KnowledgeDocument\nStatus → Failed\nProcessingError = detalle]
         U --> V([🔔 Admin puede\nreintentar desde dashboard])
     end
 
-    E -.->|"Worker consume\nla cola"| G
     L -.->|"Error de API\no IO"| T
 
     style API fill:#e8f4fd,stroke:#2196F3
-    style WORKER fill:#e8f5e9,stroke:#4CAF50
     style ERROR fill:#fdecea,stroke:#f44336
 ```
 
@@ -51,10 +53,10 @@ flowchart TD
     A([💬 Cliente final\nenvía mensaje]) --> B
 
     subgraph AUTH ["🔐 Autenticación del Canal"]
-        B[Recibir request\nPOST /api/v1/chat/message]
-        B --> C[Validar PublicApiKey\ndel ChatChannel]
-        C --> D[Resolver TenantId\ndesde ChatChannel]
-        D --> E{¿Sesión existente\npor ExternalSessionId?}
+        B[Recibir request\nPOST /api/Chat/send]
+        B --> C[Identificar Tenant\nvia X-Tenant-Id]
+        C --> D[Validar existencia\ndel Tenant]
+        D --> E{¿Sesión existente\nen el request?}
         E -- No --> F[Crear ChatSession\nStatus: Active]
         E -- Sí --> G[Cargar ChatSession\nexistente]
         F --> H
